@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="dark" />
+<meta name="application-name" content="Parking Saver" />
+<meta name="description" content="Save your parking spot with one tap, then follow the compass back to your car." />
+<link rel="icon" type="image/png" href="icon-192.png" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<title>Parking Saver</title>
+<style>
+  :root{
+    --bg:#060a1a; --ink:#f1f5f9; --muted:#7d8aa5;
+    --amber:#fbbf24; --amber-soft:rgba(251,191,36,.14);
+    --card:#0c1430; --line:rgba(251,191,36,.28);
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  html,body{height:100%; overflow:hidden}
+  body{
+    background:radial-gradient(120% 90% at 50% 0%, #101c44 0%, var(--bg) 65%);
+    color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    display:flex; align-items:center; justify-content:center; min-height:100dvh;
+    -webkit-font-smoothing:antialiased; -webkit-user-select:none; user-select:none;
+  }
+  .app{width:min(480px,100vw - 24px); height:100dvh; max-height:780px; display:flex; flex-direction:column; padding:16px 14px 12px}
+  header{flex:0 0 auto; text-align:center}
+  h1{font-size:19px; letter-spacing:.04em; color:var(--amber)}
+  #status{color:var(--muted); font-size:12px; margin-top:3px; min-height:16px}
+  .view{flex:1 1 auto; min-height:0; display:flex; flex-direction:column; justify-content:center; gap:12px}
+  .view[hidden]{display:none}
+  .bigbtn{
+    width:100%; border:none; border-radius:20px; padding:26px 12px;
+    font-size:22px; font-weight:900; cursor:pointer;
+    background:linear-gradient(160deg,#fbbf24,#d97706); color:#241a02;
+  }
+  .bigbtn:active{transform:scale(.97)}
+  .ghost{
+    width:100%; border:1px solid rgba(125,138,165,.4); border-radius:14px; padding:13px;
+    font-size:15px; font-weight:700; cursor:pointer; background:transparent; color:var(--muted);
+  }
+  .ghost:active{transform:scale(.97)}
+  .ghost.danger{border-color:#f87171; color:#f87171}
+  .hint{text-align:center; color:var(--muted); font-size:13px}
+  .elapsed{text-align:center; border:1px solid var(--line); border-radius:20px;
+    background:linear-gradient(160deg, rgba(251,191,36,.12), rgba(251,191,36,.03)); padding:16px 10px}
+  .elapsed .lab{font-size:12px; color:var(--muted); letter-spacing:.18em}
+  .elapsed .big{font-size:42px; font-weight:900; color:var(--amber); font-variant-numeric:tabular-nums; margin:2px 0}
+  .elapsed .sub{font-size:12.5px; color:var(--muted)}
+  .noterow{display:flex; gap:8px}
+  #noteInput{
+    flex:1; min-width:0; border:1px solid rgba(125,138,165,.4); border-radius:12px;
+    background:#0a1028; color:var(--ink); font-size:15px; padding:12px;
+    -webkit-user-select:text; user-select:text;
+  }
+  #noteBtn{
+    flex:0 0 auto; border:1px solid var(--line); background:var(--amber-soft); color:var(--amber);
+    border-radius:12px; padding:12px 18px; font-size:15px; font-weight:800; cursor:pointer;
+  }
+  #noteBtn:active{transform:scale(.96)}
+  .dialwrap{flex:1 1 auto; min-height:0; display:flex; align-items:center; justify-content:center}
+  #dial{width:min(70vw,270px); height:min(70vw,270px)}
+  .findinfo{text-align:center}
+  .findinfo .dist{font-size:36px; font-weight:900; color:var(--amber); font-variant-numeric:tabular-nums}
+  .findinfo .sub{font-size:13px; color:var(--muted); margin-top:2px}
+  #compassBtn{
+    margin-top:8px; border:1px solid var(--line); background:var(--amber-soft); color:var(--amber);
+    border-radius:12px; padding:11px 18px; font-size:14px; font-weight:800; cursor:pointer;
+  }
+  #compassBtn:active{transform:scale(.96)}
+  .cstatus{font-size:11px; margin-top:6px; letter-spacing:.06em}
+  .cstatus.live{color:#34d399}
+  .cstatus.off{color:var(--muted)}
+  button:focus-visible, input:focus-visible{outline:3px solid var(--amber); outline-offset:2px}
+</style>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <h1>🅿️ Parking Saver</h1>
+      <div id="status">Never lose your car again</div>
+    </header>
+
+    <section class="view" id="viewEmpty">
+      <button class="bigbtn" id="saveBtn" data-focusable>📍 Save my spot</button>
+      <div class="hint">One tap saves your GPS position.<br/>Later, the compass walks you back.</div>
+    </section>
+
+    <section class="view" id="viewSpot" hidden>
+      <div class="elapsed">
+        <div class="lab">PARKED FOR</div>
+        <div class="big" id="elapsed">–</div>
+        <div class="sub" id="spotMeta"></div>
+      </div>
+      <div class="noterow">
+        <input id="noteInput" maxlength="40" placeholder="Note — level, zone, landmark…" autocomplete="off" />
+        <button id="noteBtn" data-focusable>Set</button>
+      </div>
+      <button class="bigbtn" id="findBtn" data-focusable>🧭 Find my car</button>
+      <button class="ghost" id="clearBtn" data-focusable>Clear spot</button>
+    </section>
+
+    <section class="view" id="viewFind" hidden>
+      <div class="dialwrap">
+        <svg id="dial" viewBox="0 0 200 200" aria-label="Car direction compass">
+          <g id="card" transform="rotate(0 100 100)">
+            <circle cx="100" cy="100" r="92" fill="rgba(251,191,36,0.05)" stroke="#fbbf24" stroke-width="2"/>
+            <circle cx="100" cy="100" r="78" fill="none" stroke="rgba(251,191,36,0.3)" stroke-width="1"/>
+            <g id="ticks"></g>
+            <text x="100" y="26" text-anchor="middle" fill="#fbbf24" font-size="15" font-weight="800">N</text>
+            <text x="100" y="184" text-anchor="middle" fill="#7d8aa5" font-size="13">S</text>
+            <text x="178" y="105" text-anchor="middle" fill="#7d8aa5" font-size="13">E</text>
+            <text x="22" y="105" text-anchor="middle" fill="#7d8aa5" font-size="13">W</text>
+            <g id="carMark" transform="rotate(0 100 100)">
+              <text x="100" y="24" text-anchor="middle" font-size="22">🚗</text>
+            </g>
+          </g>
+          <polygon points="100,2 94,16 106,16" fill="#f1f5f9"/>
+        </svg>
+      </div>
+      <div class="findinfo">
+        <div class="dist" id="dist">–</div>
+        <div class="sub" id="findSub">getting your position…</div>
+        <button id="compassBtn" data-focusable hidden>Enable live compass</button>
+        <div class="cstatus off" id="fstatus">STATIC — NO COMPASS</div>
+      </div>
+      <button class="ghost" id="backBtn" data-focusable>← Back</button>
+    </section>
+  </main>
+
+<script>
+(function(){
+"use strict";
+var D2R = Math.PI / 180, R2D = 180 / Math.PI;
+var KEY = "parking-spot-v1";
+function $(id){ return document.getElementById(id); }
+
+function loadSpot(){
+  try{
+    var s = JSON.parse(localStorage.getItem(KEY));
+    if(s && typeof s.lat === "number" && typeof s.lng === "number") return s;
+  }catch(e){}
+  return null;
+}
+var spot = loadSpot();
+var watchId = null, heading = null, compassLive = false, lastPos = null;
+
+function setStatus(t){ $("status").textContent = t; }
+function show(id){
+  ["viewEmpty","viewSpot","viewFind"].forEach(function(v){ $(v).hidden = v !== id; });
+}
+
+/* ---------- geo math ---------- */
+function distM(a,b,c,d){
+  var R = 6371000, dLa = (c-a)*D2R, dLo = (d-b)*D2R;
+  var h = Math.sin(dLa/2)*Math.sin(dLa/2) + Math.cos(a*D2R)*Math.cos(c*D2R)*Math.sin(dLo/2)*Math.sin(dLo/2);
+  return 2*R*Math.asin(Math.min(1, Math.sqrt(h)));
+}
+function bearing(a,b,c,d){
+  var dLo = (d-b)*D2R;
+  var y = Math.sin(dLo)*Math.cos(c*D2R);
+  var x = Math.cos(a*D2R)*Math.sin(c*D2R) - Math.sin(a*D2R)*Math.cos(c*D2R)*Math.cos(dLo);
+  return (Math.atan2(y,x)*R2D + 360) % 360;
+}
+function fmtElapsed(ms){
+  var m = Math.floor(ms/60000);
+  if(m < 1) return "just now";
+  var h = Math.floor(m/60), d = Math.floor(h/24);
+  if(d > 0) return d + "d " + (h%24) + "h";
+  if(h > 0) return h + "h " + (m%60) + "m";
+  return m + "m";
+}
+function fmtDist(m){
+  return m < 1000 ? Math.round(m) + " m" : (m/1000).toFixed(1) + " km";
+}
+function fmtTime(t){
+  var d = new Date(t), h = d.getHours(), m = d.getMinutes();
+  var ap = h < 12 ? "AM" : "PM", h12 = h % 12; if(h12 === 0) h12 = 12;
+  return h12 + ":" + String(m).padStart(2,"0") + " " + ap;
+}
+
+/* ---------- spot view ---------- */
+function renderSpot(){
+  if(!spot) return;
+  $("elapsed").textContent = fmtElapsed(Date.now() - spot.t);
+  $("spotMeta").textContent = "saved at " + fmtTime(spot.t) +
+    (spot.note ? " · " + spot.note : "") +
+    " · " + spot.lat.toFixed(5) + ", " + spot.lng.toFixed(5);
+  if(document.activeElement !== $("noteInput")) $("noteInput").value = spot.note || "";
+}
+$("noteBtn").addEventListener("click", function(){
+  if(!spot) return;
+  spot.note = $("noteInput").value.trim();
+  localStorage.setItem(KEY, JSON.stringify(spot));
+  renderSpot();
+  setStatus(spot.note ? "Note saved ✓" : "Note cleared");
+  $("noteInput").blur();
+});
+
+/* ---------- save ---------- */
+$("saveBtn").addEventListener("click", function(){
+  if(!navigator.geolocation){ setStatus("Geolocation not supported on this device."); return; }
+  setStatus("Getting your location…");
+  navigator.geolocation.getCurrentPosition(function(p){
+    spot = {lat: p.coords.latitude, lng: p.coords.longitude, t: Date.now(), note: ""};
+    localStorage.setItem(KEY, JSON.stringify(spot));
+    renderSpot(); show("viewSpot");
+    setStatus("Spot saved ✓ — good parking!");
+  }, function(){
+    setStatus("Couldn't get location — allow location access and try again.");
+  }, {enableHighAccuracy: true, timeout: 15000, maximumAge: 0});
+});
+
+/* ---------- clear (two-tap) ---------- */
+var clearArmed = false, clearTimer = null;
+$("clearBtn").addEventListener("click", function(){
+  if(!clearArmed){
+    clearArmed = true;
+    this.textContent = "Tap again to confirm";
+    this.classList.add("danger");
+    var self = this;
+    clearTimer = setTimeout(function(){
+      clearArmed = false; self.textContent = "Clear spot"; self.classList.remove("danger");
+    }, 4000);
+  }else{
+    clearTimeout(clearTimer);
+    localStorage.removeItem(KEY); spot = null;
+    clearArmed = false; this.textContent = "Clear spot"; this.classList.remove("danger");
+    show("viewEmpty"); setStatus("Spot cleared.");
+  }
+});
+
+/* ---------- finder ---------- */
+(function buildTicks(){
+  var s = "";
+  for(var i = 0; i < 72; i++){
+    var a = i*5, maj = i % 18 === 0, r1 = maj ? 78 : 84, r2 = 90;
+    var x1 = 100 + r1*Math.sin(a*D2R), y1 = 100 - r1*Math.cos(a*D2R);
+    var x2 = 100 + r2*Math.sin(a*D2R), y2 = 100 - r2*Math.cos(a*D2R);
+    s += '<line x1="'+x1.toFixed(1)+'" y1="'+y1.toFixed(1)+'" x2="'+x2.toFixed(1)+'" y2="'+y2.toFixed(1)+
+         '" stroke="'+(maj ? "#fbbf24" : "rgba(251,191,36,0.35)")+'" stroke-width="'+(maj?2:1)+'"/>';
+  }
+  $("ticks").innerHTML = s;
+})();
+
+function setLive(on){
+  compassLive = on;
+  var st = $("fstatus");
+  st.textContent = on ? "● LIVE COMPASS — walk toward 🚗" : "STATIC — NO COMPASS";
+  st.className = "cstatus " + (on ? "live" : "off");
+}
+function onOrient(e){
+  var h = null;
+  if(e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) h = e.webkitCompassHeading;
+  else if(e.alpha !== null && e.alpha !== undefined) h = 360 - e.alpha;
+  if(h === null || isNaN(h)) return;
+  heading = ((h % 360) + 360) % 360;
+  if(!compassLive) setLive(true);
+  updateDial();
+}
+window.addEventListener("deviceorientationabsolute", onOrient);
+window.addEventListener("deviceorientation", onOrient);
+if(typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function"){
+  var cb = $("compassBtn");
+  cb.hidden = false;
+  cb.addEventListener("click", function(){
+    DeviceOrientationEvent.requestPermission().then(function(res){
+      if(res === "granted"){ cb.hidden = true; }
+      else { cb.textContent = "Compass blocked — use static dial"; }
+    }).catch(function(){ cb.textContent = "Compass blocked — use static dial"; });
+  });
+}
+
+function updateDial(){
+  if(!spot || !lastPos) return;
+  var b = bearing(lastPos.latitude, lastPos.longitude, spot.lat, spot.lng);
+  var d = distM(lastPos.latitude, lastPos.longitude, spot.lat, spot.lng);
+  $("carMark").setAttribute("transform", "rotate(" + b.toFixed(1) + " 100 100)");
+  $("card").setAttribute("transform", "rotate(" + (-(heading || 0)).toFixed(1) + " 100 100)");
+  $("dist").textContent = fmtDist(d);
+  $("findSub").textContent = d < 15
+    ? "You're basically there — look around!"
+    : "car is " + Math.round(b) + "° from north";
+}
+function onPos(p){ lastPos = p.coords; updateDial(); }
+function startWatch(){
+  lastPos = null; setLive(false);
+  $("dist").textContent = "–";
+  $("findSub").textContent = "getting your position…";
+  if(!navigator.geolocation){ $("findSub").textContent = "Geolocation not supported."; return; }
+  if(watchId !== null) navigator.geolocation.clearWatch(watchId);
+  watchId = navigator.geolocation.watchPosition(onPos, function(){
+    $("findSub").textContent = "Waiting for GPS fix…";
+  }, {enableHighAccuracy: true, timeout: 20000, maximumAge: 5000});
+  navigator.geolocation.getCurrentPosition(onPos, function(){}, {enableHighAccuracy: true, timeout: 15000});
+}
+function stopWatch(){
+  if(watchId !== null && navigator.geolocation){ navigator.geolocation.clearWatch(watchId); }
+  watchId = null;
+}
+$("findBtn").addEventListener("click", function(){ show("viewFind"); startWatch(); });
+$("backBtn").addEventListener("click", function(){ stopWatch(); renderSpot(); show("viewSpot"); setStatus("Spot saved ✓"); });
+
+/* ---------- init ---------- */
+if(spot){ renderSpot(); show("viewSpot"); setStatus("Spot saved ✓"); }
+setInterval(function(){ if(spot && !$("viewSpot").hidden) renderSpot(); }, 30000);
+})();
+</script>
+</body>
+</html>
